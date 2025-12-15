@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import List, Optional
 
@@ -7,6 +7,13 @@ class TransactionBase(BaseModel):
     description: str
     amount: float
     date: Optional[datetime] = None
+
+    @field_validator('amount')
+    @classmethod
+    def amount_must_be_positive(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError('Amount must be non-negative')
+        return v
 
 
 class TransactionCreate(TransactionBase):
@@ -17,6 +24,13 @@ class TransactionUpdate(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
     date: Optional[datetime] = None
+
+    @field_validator('amount')
+    @classmethod
+    def amount_must_be_positive(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError('Amount must be non-negative')
+        return v
 
     class Config:
         from_attributes = True
@@ -34,15 +48,28 @@ class SubcategoryBase(BaseModel):
     name: str
     allotted: float
 
+    @field_validator('allotted')
+    @classmethod
+    def allotted_must_be_positive(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError('Allotted amount must be non-negative')
+        return v
+
 
 class SubcategoryCreate(SubcategoryBase):
     category_id: int
 
 
 class SubcategoryUpdate(BaseModel):
+    name: Optional[str] = None
     allotted: Optional[float] = None
-    year: Optional[int] = None
-    month: Optional[int] = None
+
+    @field_validator('allotted')
+    @classmethod
+    def allotted_must_be_positive(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError('Allotted amount must be non-negative')
+        return v
 
 
 class Subcategory(SubcategoryBase):
@@ -58,10 +85,30 @@ class CategoryBase(BaseModel):
     name: str
     budget: float
 
+    @field_validator('budget')
+    @classmethod
+    def budget_must_be_positive(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError('Budget must be non-negative')
+        return v
+
 
 class CategoryCreate(CategoryBase):
-    year: Optional[int] = None  # Default to current year if not provided
-    month: Optional[int] = None # Default to current month if not provided
+    year: Optional[int] = None
+    month: Optional[int] = None
+
+
+class CategoryUpdate(BaseModel):
+    """Schema for updating an existing category."""
+    name: Optional[str] = None
+    budget: Optional[float] = None
+
+    @field_validator('budget')
+    @classmethod
+    def budget_must_be_positive(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError('Budget must be non-negative')
+        return v
 
 
 class Category(CategoryBase):
@@ -70,3 +117,4 @@ class Category(CategoryBase):
 
     class Config:
         from_attributes = True
+
