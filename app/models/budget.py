@@ -3,7 +3,7 @@
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from ..database import Base
 
 
@@ -58,7 +58,7 @@ class BudgetInvitation(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)  # 7 days from creation
     accepted_at = Column(DateTime(timezone=True), nullable=True)
 
-    budget = relationship("Budget", backref="invitations")
+    budget = relationship("Budget", backref=backref("invitations", cascade="all, delete-orphan"))
 
 
 class Category(Base):

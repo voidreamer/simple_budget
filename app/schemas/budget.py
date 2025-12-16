@@ -126,6 +126,7 @@ class Budget(BudgetBase):
     id: int
     owner_id: str
     created_at: datetime
+    member_count: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -152,6 +153,7 @@ class BudgetInvitationResponse(BaseModel):
     budget_id: int
     inviter_id: str
     invitee_email: str
+    token: str
     role: str
     status: str
     created_at: datetime

@@ -47,9 +47,17 @@ def list_my_budgets(
     current_user: str = Depends(get_current_user)
 ):
     """List all budgets where the user is a member."""
-    return db.query(models.Budget).join(models.BudgetMember).filter(
+    budgets = db.query(models.Budget).join(models.BudgetMember).filter(
         models.BudgetMember.user_id == current_user
     ).all()
+
+    # Add member count to each budget
+    for budget in budgets:
+        budget.member_count = db.query(models.BudgetMember).filter(
+            models.BudgetMember.budget_id == budget.id
+        ).count()
+
+    return budgets
 
 @router.put("/{budget_id}", response_model=schemas.Budget, summary="Update budget")
 def update_budget(
