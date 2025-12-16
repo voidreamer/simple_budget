@@ -1,6 +1,6 @@
 # controllers/budgets.py
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -50,11 +50,16 @@ def list_my_budgets(
 @router.post("/{budget_id}/members", response_model=schemas.BudgetMember, summary="Add member to budget")
 def add_member(
     budget_id: int,
-    user_id_to_add: str, # passed as query param for simplicity in MVP
+    user_id_to_add: str = Query(..., description="User ID (UUID) to add to the budget"),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Add a user to the budget (Only Admin/Owner can do this)."""
+    # Check if budget exists
+    budget = db.query(models.Budget).filter(models.Budget.id == budget_id).first()
+    if not budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+
     # Verify Requester is Admin
     requester_role = db.query(models.BudgetMember).filter(
         models.BudgetMember.budget_id == budget_id,
@@ -62,8 +67,17 @@ def add_member(
         models.BudgetMember.role.in_(["admin", "owner"]) # "owner" isn't in role col default but logic implies
     ).first()
 
-    if not requester_role and current_user != db.query(models.Budget).get(budget_id).owner_id:
+    if not requester_role and current_user != budget.owner_id:
          raise HTTPException(status_code=403, detail="Only admins can add members")
+
+    # Check if user is already a member
+    existing_member = db.query(models.BudgetMember).filter(
+        models.BudgetMember.budget_id == budget_id,
+        models.BudgetMember.user_id == user_id_to_add
+    ).first()
+
+    if existing_member:
+        raise HTTPException(status_code=400, detail="User is already a member of this budget")
 
     new_member = models.BudgetMember(
         budget_id=budget_id,

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .controllers import budget
+from .controllers import budget, budgets
 from .database import engine, Base
 
 app = FastAPI(title="Budget API")
