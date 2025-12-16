@@ -5,10 +5,16 @@ from .database import engine, Base
 
 app = FastAPI(title="Budget API")
 
-# Configure CORS
+# Configure CORS - explicit origins required when allow_credentials=True
+origins = [
+    "https://d1wqjnlllq13dm.cloudfront.net",  # Production CloudFront
+    "http://localhost:5173",                    # Local development
+    "http://localhost:3000",                    # Alternative local dev
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Modify in production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
