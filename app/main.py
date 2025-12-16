@@ -15,7 +15,13 @@ app.add_middleware(
 )
 
 # Create database tables
+from sqlalchemy import text
+with engine.connect() as connection:
+    connection.execute(text("CREATE SCHEMA IF NOT EXISTS budget_v3"))
+    connection.commit()
+
 Base.metadata.create_all(bind=engine)
 
 # Include routers
-app.include_router(budget.router, prefix="/api", tags=["budget"])
+app.include_router(budget.router, prefix="/api", tags=["finance"])
+app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
