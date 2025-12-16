@@ -111,9 +111,43 @@ class CategoryUpdate(BaseModel):
         return v
 
 
+
+class BudgetBase(BaseModel):
+    name: str
+
+class BudgetCreate(BudgetBase):
+    pass
+
+class Budget(BudgetBase):
+    id: int
+    owner_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class BudgetMemberBase(BaseModel):
+    user_id: str
+    role: str = "editor"
+
+class BudgetMemberCreate(BudgetMemberBase):
+    budget_id: int
+
+class BudgetMember(BudgetMemberBase):
+    id: int
+    budget_id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Update Category to include budget_id instead of assuming context
 class Category(CategoryBase):
     id: int
+    budget_id: int
     subcategories: List[Subcategory] = []
+    created_at: datetime
 
     class Config:
         from_attributes = True

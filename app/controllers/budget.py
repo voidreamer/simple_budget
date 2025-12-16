@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..dependencies import get_db
+from ..dependencies import get_db, get_current_budget
 from ..schemas import budget as schemas
 from ..services import budget as service
 
@@ -20,30 +21,78 @@ router = APIRouter()
 
 
 @router.post("/categories/", response_model=schemas.Category, summary="Create a new category")
-def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db)):
+def create_category(
+    category: schemas.CategoryCreate, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Create a new budget category for the current month."""
-    logger.info(f"Creating category: {category.name}")
-    return service.create_category(db, category)
+    logger.info(f"Creating category: {category.name} in budget {budget_id}")
+    
+    db_category = models.Category(
+        budget_id=budget_id,
+        **category.dict()
+    )
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
 
 
 @router.get("/categories/", response_model=List[schemas.Category], summary="List all categories")
-def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_categories(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Retrieve all budget categories with pagination."""
     logger.debug(f"Fetching categories (skip={skip}, limit={limit})")
-    return service.get_categories(db, skip=skip, limit=limit)
+    
+    return db.query(models.Category).filter(
+        models.Category.budget_id == budget_id
+    ).offset(skip).limit(limit).all()
 
 
 @router.post("/subcategories/", response_model=schemas.Subcategory, summary="Create a subcategory")
-def create_subcategory(subcategory: schemas.SubcategoryCreate, db: Session = Depends(get_db)):
+def create_subcategory(
+    subcategory: schemas.SubcategoryCreate, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Create a new subcategory under an existing category."""
     logger.info(f"Creating subcategory: {subcategory.name}")
+    
+    # Verify category belongs to budget
+    category = db.query(models.Category).filter(
+        models.Category.id == subcategory.category_id,
+        models.Category.budget_id == budget_id
+    ).first()
+    
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+        
     return service.create_subcategory(db, subcategory)
 
 
 @router.post("/transactions/", response_model=schemas.Transaction, summary="Create a transaction")
-def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
+def create_transaction(
+    transaction: schemas.TransactionCreate, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Record a new transaction under a subcategory."""
     logger.info(f"Creating transaction: {transaction.description} (${transaction.amount})")
+    
+    # Verify via subcategory -> category -> budget
+    subcategory = db.query(models.Subcategory).join(models.Category).filter(
+        models.Subcategory.id == transaction.subcategory_id,
+        models.Category.budget_id == budget_id
+    ).first()
+    
+    if not subcategory:
+        raise HTTPException(status_code=404, detail="Subcategory not found")
+        
     return service.create_transaction(db, transaction)
 
 
@@ -56,18 +105,35 @@ def month_to_number(month: str) -> int:
 
 
 @router.get("/budget-summary/{year}/{month}", summary="Get monthly budget summary")
-def get_budget_summary(year: int, month: Union[str, int], db: Session = Depends(get_db)):
+def get_budget_summary(
+    year: int, 
+    month: Union[str, int], 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Get complete budget summary with categories, subcategories, and transactions for a given month."""
     month_num = month_to_number(month) if isinstance(month, str) else month
     logger.debug(f"Fetching budget summary for {year}/{month_num}")
-    return service.get_budget_summary(db, year, month_num)
+    
+    return db.query(models.Category).filter(
+        models.Category.year == year,
+        models.Category.month == month_num,
+        models.Category.budget_id == budget_id
+    ).all()
 
 
 @router.delete("/categories/{category_id}", summary="Delete a category")
-def delete_category(category_id: int, db: Session = Depends(get_db)):
+def delete_category(
+    category_id: int, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Delete a category and all its subcategories and transactions."""
     logger.info(f"Deleting category: {category_id}")
-    category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    category = db.query(models.Category).filter(
+        models.Category.id == category_id,
+        models.Category.budget_id == budget_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
@@ -82,10 +148,17 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/subcategories/{subcategory_id}", summary="Delete a subcategory")
-def delete_subcategory(subcategory_id: int, db: Session = Depends(get_db)):
+def delete_subcategory(
+    subcategory_id: int, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Delete a subcategory and all its transactions."""
     logger.info(f"Deleting subcategory: {subcategory_id}")
-    subcategory = db.query(models.Subcategory).filter(models.Subcategory.id == subcategory_id).first()
+    subcategory = db.query(models.Subcategory).join(models.Category).filter(
+        models.Subcategory.id == subcategory_id,
+        models.Category.budget_id == budget_id
+    ).first()
     if not subcategory:
         raise HTTPException(status_code=404, detail="Subcategory not found")
 
@@ -99,11 +172,15 @@ def delete_subcategory(subcategory_id: int, db: Session = Depends(get_db)):
 def update_subcategory(
     subcategory_id: int,
     data: schemas.SubcategoryUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
 ):
     """Update subcategory name or allotted amount."""
     logger.info(f"Updating subcategory {subcategory_id}")
-    subcategory = db.query(models.Subcategory).filter(models.Subcategory.id == subcategory_id).first()
+    subcategory = db.query(models.Subcategory).join(models.Category).filter(
+        models.Subcategory.id == subcategory_id,
+        models.Category.budget_id == budget_id
+    ).first()
     if not subcategory:
         raise HTTPException(status_code=404, detail="Subcategory not found")
 
@@ -121,11 +198,15 @@ def update_subcategory(
 def update_category(
     category_id: int,
     data: schemas.CategoryUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
 ):
     """Update category name or budget."""
     logger.info(f"Updating category {category_id}")
-    category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    category = db.query(models.Category).filter(
+        models.Category.id == category_id,
+        models.Category.budget_id == budget_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
@@ -143,12 +224,14 @@ def update_category(
 def update_transaction(
     transaction_id: int,
     data: schemas.TransactionUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
 ):
     """Update transaction details."""
     logger.info(f"Updating transaction {transaction_id}")
-    transaction = db.query(models.Transaction).filter(
-        models.Transaction.id == transaction_id
+    transaction = db.query(models.Transaction).join(models.Subcategory).join(models.Category).filter(
+        models.Transaction.id == transaction_id,
+        models.Category.budget_id == budget_id
     ).first()
 
     if not transaction:
@@ -167,11 +250,16 @@ def update_transaction(
 
 
 @router.delete("/transactions/{transaction_id}", summary="Delete a transaction")
-def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
+def delete_transaction(
+    transaction_id: int, 
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
     """Delete a single transaction."""
     logger.info(f"Deleting transaction: {transaction_id}")
-    transaction = db.query(models.Transaction).filter(
-        models.Transaction.id == transaction_id
+    transaction = db.query(models.Transaction).join(models.Subcategory).join(models.Category).filter(
+        models.Transaction.id == transaction_id,
+        models.Category.budget_id == budget_id
     ).first()
 
     if not transaction:
