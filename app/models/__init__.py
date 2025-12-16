@@ -1,1 +1,1 @@
-from .budget import Budget, BudgetMember, Category, Subcategory, Transaction
+from .budget import Budget, BudgetMember, BudgetInvitation, Category, Subcategory, Transaction

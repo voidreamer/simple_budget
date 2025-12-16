@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, EmailStr
 from datetime import datetime
 from typing import List, Optional
 
@@ -137,7 +137,23 @@ class BudgetMember(BudgetMemberBase):
     id: int
     budget_id: int
     created_at: datetime
-    
+
+    class Config:
+        from_attributes = True
+
+
+class BudgetInvitationResponse(BaseModel):
+    """Response schema for budget invitations."""
+    id: int
+    budget_id: int
+    inviter_id: str
+    invitee_email: str
+    role: str
+    status: str
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 

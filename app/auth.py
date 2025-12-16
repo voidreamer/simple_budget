@@ -41,3 +41,36 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def get_user_email(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    """
+    Extract email from Supabase JWT token for invitation validation.
+    """
+    token = credentials.credentials
+    secret = os.getenv("SUPABASE_JWT_SECRET")
+
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT Secret not configured"
+        )
+
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
+        email: str = payload.get("email")
+
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email not found in token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return email.lower()  # Normalize to lowercase
+
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

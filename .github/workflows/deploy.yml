@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+      - feature/multilogin
+    paths:
+      - 'handler.py'
+      - 'app/**'
+      - 'requirements.txt'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 jobs:
@@ -21,7 +27,7 @@ jobs:
       - name: Install Dependencies
         run: |
           mkdir -p package
-          pip install -r requirements.txt -t package/
+          pip install -r requirements.txt -t package/ --platform manylinux2014_x86_64 --only-binary=:all:
 
       - name: Create Zip Bundle
         run: |
@@ -30,6 +36,7 @@ jobs:
           cd ..
           zip lambda.zip handler.py
           zip -r lambda.zip app/
+          echo "Package size: $(du -h lambda.zip | cut -f1)"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -38,6 +45,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Update Lambda Code
+      - name: Deploy to Lambda
         run: |
-          aws lambda update-function-code --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} --zip-file fileb://lambda.zip
+          LAMBDA_NAME="${{ vars.LAMBDA_FUNCTION_NAME || 'budget-app-api' }}"
+          aws lambda update-function-code \
+            --function-name "$LAMBDA_NAME" \
+            --zip-file fileb://lambda.zip \
+            --publish
+          echo "Deployed successfully to $LAMBDA_NAME"

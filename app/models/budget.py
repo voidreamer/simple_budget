@@ -42,6 +42,25 @@ class BudgetMember(Base):
     budget = relationship("Budget", back_populates="members")
 
 
+class BudgetInvitation(Base):
+    """Email-based budget invitation with secure token."""
+    __tablename__ = "budget_invitations"
+    __table_args__ = {"schema": "budget_v3"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    budget_id = Column(Integer, ForeignKey("budget_v3.budgets.id"), nullable=False)
+    inviter_id = Column(String, nullable=False, index=True)  # Who sent the invite
+    invitee_email = Column(String, nullable=False, index=True)  # Email to invite
+    token = Column(String(64), unique=True, nullable=False, index=True)  # Secure token
+    role = Column(String, default="editor")  # Role to assign when accepted
+    status = Column(String, default="pending")  # pending, accepted, expired, cancelled
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    expires_at = Column(DateTime(timezone=True), nullable=False)  # 7 days from creation
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+
+    budget = relationship("Budget", backref="invitations")
+
+
 class Category(Base):
     """Budget category for organizing spending (e.g., 'Groceries', 'Entertainment')."""
     __tablename__ = "categories"
