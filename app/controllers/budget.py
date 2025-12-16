@@ -22,16 +22,21 @@ router = APIRouter()
 
 @router.post("/categories/", response_model=schemas.Category, summary="Create a new category")
 def create_category(
-    category: schemas.CategoryCreate, 
+    category: schemas.CategoryCreate,
     db: Session = Depends(get_db),
     budget_id: int = Depends(get_current_budget)
 ):
     """Create a new budget category for the current month."""
     logger.info(f"Creating category: {category.name} in budget {budget_id}")
-    
+
+    # Map schema fields to model fields (budget -> budget_amount)
+    category_data = category.dict()
+    budget_value = category_data.pop('budget', 0)  # Remove 'budget' to avoid conflict with relationship
+
     db_category = models.Category(
         budget_id=budget_id,
-        **category.dict()
+        budget_amount=budget_value,  # Set the column explicitly
+        **category_data
     )
     db.add(db_category)
     db.commit()
@@ -104,17 +109,17 @@ def month_to_number(month: str) -> int:
         raise HTTPException(status_code=422, detail=f"Invalid month name: {month}")
 
 
-@router.get("/budget-summary/{year}/{month}", summary="Get monthly budget summary")
+@router.get("/budget-summary/{year}/{month}", response_model=List[schemas.Category], summary="Get monthly budget summary")
 def get_budget_summary(
-    year: int, 
-    month: Union[str, int], 
+    year: int,
+    month: Union[str, int],
     db: Session = Depends(get_db),
     budget_id: int = Depends(get_current_budget)
 ):
     """Get complete budget summary with categories, subcategories, and transactions for a given month."""
     month_num = month_to_number(month) if isinstance(month, str) else month
     logger.debug(f"Fetching budget summary for {year}/{month_num}")
-    
+
     return db.query(models.Category).filter(
         models.Category.year == year,
         models.Category.month == month_num,

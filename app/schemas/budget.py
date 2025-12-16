@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import List, Optional
 
@@ -143,12 +143,17 @@ class BudgetMember(BudgetMemberBase):
 
 
 # Update Category to include budget_id instead of assuming context
-class Category(CategoryBase):
+class Category(BaseModel):
     id: int
+    name: str
+    budget: float = Field(validation_alias='budget_amount')  # Map from model's budget_amount
     budget_id: int
+    year: int
+    month: int
     subcategories: List[Subcategory] = []
     created_at: datetime
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
