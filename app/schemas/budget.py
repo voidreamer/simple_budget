@@ -118,6 +118,10 @@ class BudgetBase(BaseModel):
 class BudgetCreate(BudgetBase):
     pass
 
+class BudgetUpdate(BaseModel):
+    """Schema for updating an existing budget."""
+    name: Optional[str] = None
+
 class Budget(BudgetBase):
     id: int
     owner_id: str

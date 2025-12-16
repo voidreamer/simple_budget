@@ -51,6 +51,61 @@ def list_my_budgets(
         models.BudgetMember.user_id == current_user
     ).all()
 
+@router.put("/{budget_id}", response_model=schemas.Budget, summary="Update budget")
+def update_budget(
+    budget_id: int,
+    update_data: schemas.BudgetUpdate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Update a budget (rename). Only admins/owners can update."""
+
+    # Verify budget exists
+    budget = db.query(models.Budget).filter(models.Budget.id == budget_id).first()
+    if not budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+
+    # Verify requester is admin/owner
+    requester_role = db.query(models.BudgetMember).filter(
+        models.BudgetMember.budget_id == budget_id,
+        models.BudgetMember.user_id == current_user,
+        models.BudgetMember.role.in_(["admin", "owner"])
+    ).first()
+
+    if not requester_role and current_user != budget.owner_id:
+        raise HTTPException(status_code=403, detail="Only admins can update budgets")
+
+    # Update budget
+    if update_data.name is not None:
+        budget.name = update_data.name
+
+    db.commit()
+    db.refresh(budget)
+    return budget
+
+@router.delete("/{budget_id}", summary="Delete budget")
+def delete_budget(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Delete a budget. Only the owner can delete. Cascades to all related data."""
+
+    # Verify budget exists
+    budget = db.query(models.Budget).filter(models.Budget.id == budget_id).first()
+    if not budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+
+    # Only owner can delete
+    if current_user != budget.owner_id:
+        raise HTTPException(status_code=403, detail="Only the budget owner can delete it")
+
+    # Delete budget (cascades to members, invitations, categories, subcategories, transactions)
+    db.delete(budget)
+    db.commit()
+
+    return {"message": f"Budget '{budget.name}' deleted successfully"}
+
 @router.post("/{budget_id}/members", response_model=schemas.BudgetMember, summary="Add member to budget")
 def add_member(
     budget_id: int,
