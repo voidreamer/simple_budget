@@ -335,9 +335,6 @@ def accept_invitation(
     ).first()
 
     if existing_member:
-        invitation.status = "accepted"
-        invitation.accepted_at = datetime.now(timezone.utc)
-        db.commit()
         raise HTTPException(
             status_code=400,
             detail="You are already a member of this budget"
@@ -384,6 +381,9 @@ def validate_invitation(token: str, db: Session = Depends(get_db)):
     budget = db.query(models.Budget).filter(
         models.Budget.id == invitation.budget_id
     ).first()
+
+    if not budget:
+        raise HTTPException(status_code=404, detail="Budget no longer exists")
 
     return {
         "valid": True,

@@ -10,7 +10,6 @@ from sqlalchemy import func, extract
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..dependencies import get_db
 from ..dependencies import get_db, get_current_budget
 from ..schemas import budget as schemas
 from ..services import budget as service
@@ -216,7 +215,7 @@ def update_category(
         raise HTTPException(status_code=404, detail="Category not found")
 
     if data.budget is not None:
-        category.budget = data.budget
+        category.budget_amount = data.budget
     if data.name is not None:
         category.name = data.name
 
