@@ -1,15 +1,13 @@
-# PRODUCTION — deploys to the live Lambda function
-# Only triggers on pushes to main. Do NOT push directly — use PRs.
-name: Deploy Backend
+name: Deploy Backend (Staging)
 
 on:
   push:
     branches:
-      - main
+      - staging
   workflow_dispatch:
 
 jobs:
-  deploy-backend:
+  deploy-backend-staging:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -42,7 +40,7 @@ jobs:
 
       - name: Update Lambda Code
         run: |
-          aws lambda update-function-code --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} --zip-file fileb://lambda.zip
+          aws lambda update-function-code --function-name ${{ secrets.LAMBDA_FUNCTION_NAME_STAGING }} --zip-file fileb://lambda.zip
 
-      # NOTE: Lambda environment variables are managed manually in AWS Console.
-      # Do NOT add update-function-configuration here — it replaces ALL env vars.
+      # NOTE: Lambda environment variables (DATABASE_URL_STAGING, SUPABASE_JWT_SECRET_STAGING)
+      # are managed manually in AWS Console for the staging Lambda function.
