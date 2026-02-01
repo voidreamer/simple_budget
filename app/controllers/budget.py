@@ -104,7 +104,7 @@ def month_to_number(month: str) -> int:
         raise HTTPException(status_code=422, detail=f"Invalid month name: {month}")
 
 
-@router.get("/budget-summary/{year}/{month}", summary="Get monthly budget summary")
+@router.get("/budget-summary/{year}/{month}", response_model=List[schemas.Category], summary="Get monthly budget summary")
 def get_budget_summary(
     year: int, 
     month: Union[str, int], 
@@ -115,7 +115,10 @@ def get_budget_summary(
     month_num = month_to_number(month) if isinstance(month, str) else month
     logger.debug(f"Fetching budget summary for {year}/{month_num}")
     
-    return db.query(models.Category).filter(
+    from sqlalchemy.orm import joinedload
+    return db.query(models.Category).options(
+        joinedload(models.Category.subcategories).joinedload(models.Subcategory.transactions)
+    ).filter(
         models.Category.year == year,
         models.Category.month == month_num,
         models.Category.budget_id == budget_id
