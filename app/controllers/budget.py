@@ -115,11 +115,47 @@ def get_budget_summary(
     month_num = month_to_number(month) if isinstance(month, str) else month
     logger.debug(f"Fetching budget summary for {year}/{month_num}")
     
-    return db.query(models.Category).filter(
+    from sqlalchemy.orm import joinedload
+    categories = db.query(models.Category).options(
+        joinedload(models.Category.subcategories).joinedload(models.Subcategory.transactions)
+    ).filter(
         models.Category.year == year,
         models.Category.month == month_num,
         models.Category.budget_id == budget_id
     ).all()
+    
+    # Manually serialize to include nested relationships
+    result = []
+    for cat in categories:
+        result.append({
+            "id": cat.id,
+            "name": cat.name,
+            "budget": cat.budget_amount,
+            "budget_id": cat.budget_id,
+            "year": cat.year,
+            "month": cat.month,
+            "created_at": cat.created_at.isoformat() if cat.created_at else None,
+            "subcategories": [
+                {
+                    "id": sub.id,
+                    "name": sub.name,
+                    "allotted": sub.allotted,
+                    "category_id": sub.category_id,
+                    "transactions": [
+                        {
+                            "id": t.id,
+                            "description": t.description,
+                            "amount": t.amount,
+                            "date": t.date.isoformat() if t.date else None,
+                            "subcategory_id": t.subcategory_id,
+                        }
+                        for t in sub.transactions
+                    ]
+                }
+                for sub in cat.subcategories
+            ]
+        })
+    return result
 
 
 @router.delete("/categories/{category_id}", summary="Delete a category")
