@@ -42,16 +42,5 @@ jobs:
         run: |
           aws lambda update-function-code --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} --zip-file fileb://lambda.zip
 
-      - name: Wait for code update
-        run: |
-          aws lambda wait function-updated --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }}
-
-      - name: Update Lambda Environment Variables
-        env:
-          FUNC_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
-          DB_URL: ${{ secrets.DATABASE_URL }}
-          JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
-        run: |
-          aws lambda update-function-configuration \
-            --function-name "$FUNC_NAME" \
-            --environment "{\"Variables\":{\"DATABASE_URL\":\"$DB_URL\",\"SUPABASE_JWT_SECRET\":\"$JWT_SECRET\"}}"
+      # NOTE: Lambda environment variables are managed manually in AWS Console.
+      # Do NOT add update-function-configuration here — it replaces ALL env vars.
