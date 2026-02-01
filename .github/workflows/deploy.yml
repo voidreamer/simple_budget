@@ -47,7 +47,11 @@ jobs:
           aws lambda wait function-updated --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }}
 
       - name: Update Lambda Environment Variables
+        env:
+          FUNC_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+          DB_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
         run: |
           aws lambda update-function-configuration \
-            --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
-            --environment "Variables={DATABASE_URL=${{ secrets.DATABASE_URL }},SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}}"
+            --function-name "$FUNC_NAME" \
+            --environment "{\"Variables\":{\"DATABASE_URL\":\"$DB_URL\",\"SUPABASE_JWT_SECRET\":\"$JWT_SECRET\"}}"
