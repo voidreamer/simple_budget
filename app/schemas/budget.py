@@ -143,6 +143,21 @@ class BudgetMember(BudgetMemberBase):
 
 
 # Update Category to include budget_id instead of assuming context
+class TemplateSubcategory(BaseModel):
+    name: str
+    allotted: float = 0.0
+
+class TemplateCategory(BaseModel):
+    name: str
+    budget: float = 0.0
+    subcategories: List[TemplateSubcategory] = []
+
+class TemplateApply(BaseModel):
+    categories: List[TemplateCategory]
+    year: int
+    month: int
+
+
 class Category(CategoryBase):
     id: int
     budget_id: int

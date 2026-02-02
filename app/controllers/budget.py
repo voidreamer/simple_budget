@@ -130,7 +130,7 @@ def get_budget_summary(
         result.append({
             "id": cat.id,
             "name": cat.name,
-            "budget": cat.budget_amount,
+            "budget": cat.budget,
             "budget_id": cat.budget_id,
             "year": cat.year,
             "month": cat.month,
@@ -156,6 +156,41 @@ def get_budget_summary(
             ]
         })
     return result
+
+
+@router.post("/templates/apply", summary="Apply a budget template")
+def apply_template(
+    template: schemas.TemplateApply,
+    db: Session = Depends(get_db),
+    budget_id: int = Depends(get_current_budget)
+):
+    """Bulk-create categories and subcategories from a template."""
+    logger.info(f"Applying template with {len(template.categories)} categories to {template.year}/{template.month}")
+    
+    created = []
+    for cat_data in template.categories:
+        db_category = models.Category(
+            budget_id=budget_id,
+            name=cat_data.name,
+            budget=cat_data.budget,
+            year=template.year,
+            month=template.month,
+        )
+        db.add(db_category)
+        db.flush()  # Get the ID
+        
+        for sub_data in cat_data.subcategories:
+            db_sub = models.Subcategory(
+                name=sub_data.name,
+                allotted=sub_data.allotted,
+                category_id=db_category.id,
+            )
+            db.add(db_sub)
+        
+        created.append(db_category.id)
+    
+    db.commit()
+    return {"status": "success", "categories_created": len(created), "category_ids": created}
 
 
 @router.delete("/categories/{category_id}", summary="Delete a category")
