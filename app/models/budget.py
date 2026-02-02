@@ -25,7 +25,7 @@ class Budget(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     members = relationship("BudgetMember", back_populates="budget", cascade="all, delete-orphan")
-    categories = relationship("Category", back_populates="budget", cascade="all, delete-orphan")
+    categories = relationship("Category", back_populates="parent_budget", cascade="all, delete-orphan")
 
 
 class BudgetMember(Base):
@@ -50,12 +50,12 @@ class Category(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     budget_id = Column(Integer, ForeignKey("budget_v3.budgets.id"), nullable=False)
     name = Column(String, nullable=False)
-    budget_amount = Column("budget", Float, nullable=False, default=0.0) # Renamed to avoid confusion with table name
+    budget = Column(Float, nullable=False, default=0.0)
     year = Column(Integer, nullable=False)
     month = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now)
     
-    budget = relationship("Budget", back_populates="categories")
+    parent_budget = relationship("Budget", back_populates="categories")
     subcategories = relationship("Subcategory", back_populates="category", cascade="all, delete-orphan")
 
 
