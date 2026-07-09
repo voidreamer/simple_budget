@@ -7,40 +7,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy-backend:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Deploy to Oracle server over SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          python-version: '3.12'
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          port: ${{ secrets.ORACLE_SSH_PORT || 22 }}
+          command_timeout: 20m
+          script: |
+            set -e
+            cd ~/apps/simple_budget
+            ./deploy.sh
 
-      - name: Install Dependencies
+      - name: Verify API health
+        if: ${{ secrets.APP_URL != '' }}
         run: |
-          mkdir -p package
-          pip install -r requirements.txt -t package/
-
-      - name: Create Zip Bundle
-        run: |
-          cd package
-          zip -r ../lambda.zip .
-          cd ..
-          zip lambda.zip handler.py
-          zip -r lambda.zip app/
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Update Lambda Code
-        run: |
-          aws lambda update-function-code --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} --zip-file fileb://lambda.zip
-
-      # NOTE: Lambda environment variables are managed manually in AWS Console.
-      # Do NOT add update-function-configuration here — it replaces ALL env vars.
+          sleep 10
+          curl --fail --silent --show-error "${{ secrets.APP_URL }}/api/health"

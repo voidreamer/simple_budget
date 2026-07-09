@@ -28,11 +28,6 @@ venv/
 env/
 .env
 
-# Lambda Deployment Artifacts
-package/
-lambda.zip
-lambda *.zip
-
 # IDE
 .idea/
 .vscode/

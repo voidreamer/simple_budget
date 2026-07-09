@@ -1,0 +1,23 @@
+{$DOMAIN} {
+	encode gzip
+
+	# Backend API
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# FastAPI interactive docs
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+
+	# Front-end (simple_budget_ui build output), SPA fallback to index.html
+	handle {
+		root * /srv/ui
+		try_files {path} /index.html
+		file_server
+	}
+}

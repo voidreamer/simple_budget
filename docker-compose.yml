@@ -1,0 +1,30 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Set DOMAIN in .env to your server's domain for automatic HTTPS.
+      # Falls back to plain HTTP on port 80 (useful before DNS is set up).
+      - DOMAIN=${DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Built front-end from the sibling simple_budget_ui checkout
+      - ${UI_DIST:-../simple_budget_ui/dist}:/srv/ui:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
+  caddy_config:
