@@ -1,22 +1,168 @@
-name: Deploy Backend
+# Simple Budget CI/CD Pipeline
+#
+# Tests, then on push to main deploys:
+#   - Backend -> Oracle Cloud VM (systemd service `simple-budget-api`,
+#     uvicorn on 127.0.0.1:8081, exposed via Cloudflare Tunnel)
+#   - AWS Lambda deploy -> OPTIONAL, runs ONLY when the repo variable
+#     DEPLOY_AWS == 'true'. Kept intact so it can be re-enabled, but off by
+#     default so a push never touches AWS.
+#
+# Pattern mirrors the babylog (heybub) Oracle migration. One-time VM setup is
+# documented in docs/ORACLE_DEPLOYMENT.md.
+#
+# Required GitHub SECRETS (Settings -> Secrets and variables -> Actions -> Secrets):
+#   ORACLE_SSH_KEY   private key that authenticates as opc@ the VM
+#   AWS only if DEPLOY_AWS=true: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+#                                AWS_REGION, LAMBDA_FUNCTION_NAME
+#
+# Required GitHub VARIABLES (Settings -> Secrets and variables -> Actions -> Variables):
+#   ORACLE_HOST   VM public IP (same box as heybub, e.g. 132.145.109.74)
+#   API_URL       (optional) public API base for the post-deploy health check,
+#                 e.g. https://budget-api.yourdomain.com
+#   DEPLOY_AWS    set to 'true' to re-enable the AWS Lambda deploy (default: off)
+
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
-  deploy-backend:
+  # ============================================
+  # Backend smoke test (import check against a throwaway Postgres)
+  # ============================================
+  test-backend:
+    name: Backend Tests
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_budget
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test_budget
+      SUPABASE_JWT_SECRET: test-secret
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check imports (app boots and creates schema)
+        run: python -c "from app.main import app; print('Imports successful')"
+
+  # ============================================
+  # Deploy backend -> Oracle Cloud VM
+  # ============================================
+  deploy-backend:
+    name: Deploy backend (Oracle)
+    needs: [test-backend]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy code to the VM and restart the service
+        env:
+          ORACLE_HOST: ${{ vars.ORACLE_HOST }}
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          test -n "$ORACLE_HOST" || { echo "::error::ORACLE_HOST variable not set"; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Sync code; preserve VM-only paths (venv, uv-managed python, .env with secrets)
+          rsync -az --delete \
+            --exclude '.git' --exclude '.github' --exclude '.idea' \
+            --exclude '.venv' --exclude '.uv-python' --exclude '__pycache__' \
+            --exclude '*.pyc' --exclude '.pytest_cache' --exclude '.env' \
+            --exclude 'package' --exclude 'lambda.zip' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new" \
+            ./ opc@"$ORACLE_HOST":/opt/simple-budget/
+          # Install deps, relabel for SELinux, restart, health-check on the box
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new opc@"$ORACLE_HOST" '
+            set -e
+            export PATH="$HOME/.local/bin:$PATH"
+            cd /opt/simple-budget
+            uv pip install --python .venv/bin/python -r requirements.txt
+            sudo chcon -R -t bin_t /opt/simple-budget/.venv/bin /opt/simple-budget/.uv-python 2>/dev/null || true
+            sudo systemctl restart simple-budget-api
+            for i in $(seq 1 20); do curl -fsS -m5 http://127.0.0.1:8081/health >/dev/null 2>&1 && break; sleep 2; done
+            systemctl is-active --quiet simple-budget-api || { sudo journalctl -u simple-budget-api -n 25 --no-pager; exit 1; }
+            echo "simple-budget-api restarted and healthy"
+          '
+
+      - name: Health check (public API)
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then echo "API_URL variable not set — skipping public health check"; exit 0; fi
+          CODE=000
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo 000)
+            [ "$CODE" = "200" ] && { echo "✅ $API_URL healthy"; exit 0; }
+            sleep 3
+          done
+          echo "::error::API health check failed (last HTTP $CODE)"; exit 1
+
+  # ============================================
+  # Deploy to AWS Lambda — OPTIONAL (only when repo var DEPLOY_AWS == 'true')
+  # Kept for re-enabling on a future AWS account; never runs by default.
+  # ============================================
+  deploy-aws:
+    name: Deploy to AWS Lambda (optional)
+    needs: [test-backend]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_AWS == 'true'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install Dependencies
         run: |
